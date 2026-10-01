@@ -1,0 +1,22 @@
+[Unit]
+Description=jarvis-serve: OpenAI-compatible bridge for a Muse agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@PYTHON@ @ROOT@/server/server.py --config @ROOT@/config.json
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+TimeoutStopSec=10
+KillMode=mixed
+# logs go to the app's own rotating log file; keep journal noise bounded
+StandardOutput=append:@ROOT@/logs/systemd-stdout.log
+StandardError=append:@ROOT@/logs/systemd-stderr.log
+
+[Install]
+WantedBy=default.target

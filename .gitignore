@@ -1,0 +1,11 @@
+# Runtime state (per deployment, never committed)
+/config.json
+/.token
+/data/
+/state/
+/logs/
+# Python noise
+__pycache__/
+*.pyc
+# generated from the template by install.sh
+/systemd/jarvis-serve.service

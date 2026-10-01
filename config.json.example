@@ -1,0 +1,9 @@
+{
+  "bind": "127.0.0.1",
+  "port": 8765,
+  "token_sha256": "<sha256-of-your-token>",
+  "model": "muse-agent",
+  "data_dir": "<repo-root>/data",
+  "request_timeout_secs": 300,
+  "log_file": "<repo-root>/logs/server.log"
+}

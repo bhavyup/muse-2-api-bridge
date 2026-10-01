@@ -1,0 +1,1 @@
+{"$schema":"https://opencode.ai/config.json","provider":{"jarvis-serve":{"models":{"muse-agent":{"name":"Muse Agent"}},"name":"Muse agent","npm":"@ai-sdk/openai-compatible","options":{"apiKey":"<TOKEN_FROM_INSTALL>","baseURL":"http://<TAILSCALE_IP>:8765/v1"}}}}
