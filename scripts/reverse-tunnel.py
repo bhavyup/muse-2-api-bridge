@@ -124,6 +124,13 @@ def serve_forever(args):
             backoff = 5
             while t.is_active():
                 chan = t.accept(timeout=20)
+                if args.heartbeat_file:
+                    # Liveness proof for the server's /healthz tunnel check.
+                    try:
+                        with open(args.heartbeat_file, "a"):
+                            os.utime(args.heartbeat_file, None)
+                    except OSError:
+                        pass
                 if chan is None:
                     continue
                 peer = chan.origin_addr if hasattr(chan, "origin_addr") else "?"
@@ -144,4 +151,7 @@ if __name__ == "__main__":
     ap.add_argument("--remote-host", default=os.environ.get("JARVIS_PC_HOST", "100.110.92.50"))
     ap.add_argument("--ssh-user", default=REMOTE_USER)
     ap.add_argument("--ssh-key", default=KEY)
+    ap.add_argument("--heartbeat-file", default=None,
+                    help="touch every ~20s while the tunnel is up; the "
+                         "server's /healthz reports tunnel_connected from it")
     serve_forever(ap.parse_args())

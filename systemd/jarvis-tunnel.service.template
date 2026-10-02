@@ -1,0 +1,29 @@
+[Unit]
+Description=jarvis-serve reverse SSH tunnel (PC 127.0.0.1:18765 -> VM 127.0.0.1:8765)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+# reverse-tunnel.py resolves log/key paths via os.path.expanduser("~");
+# pin HOME so it lands in the repo regardless of the service user.
+Environment=HOME=/home/hatch
+# tunnel dials the PC via the runtime egress proxy (hostname from
+# HTTPS_PROXY, port 3130 selects Tailscale); systemd starts clean.
+Environment=HTTPS_PROXY=http://hatch-egress-proxy:3128
+Environment=HTTP_PROXY=http://hatch-egress-proxy:3128
+Environment=NO_PROXY=localhost,127.0.0.1,::1
+WorkingDirectory=@ROOT@
+ExecStart=@PYTHON@ @ROOT@/scripts/reverse-tunnel.py \
+  --heartbeat-file @ROOT@/data/tunnel.heartbeat
+Restart=always
+RestartSec=5
+# Never give up on extended PC disconnects (sleep, wifi drop, travel)
+StartLimitIntervalSec=0
+# logs go to the app's own log file; keep journal noise bounded
+StandardOutput=append:@ROOT@/logs/reverse-tunnel.log
+StandardError=inherit
+
+[Install]
+WantedBy=default.target

@@ -32,6 +32,27 @@ DRY="${HATCH_HOOK_DRY_RUN:-0}"
 # the script; on no-claim it returns 1. Fully race-safe: a concurrent
 # invocation may claim a file between our glob and our stat/mv, so every
 # filesystem touch tolerates disappearance (never trust [ -e ] under race).
+#
+# Keep-alive awareness: a worker that stayed alive for the session's next
+# turn (see scripts/wait-next-turn.sh) touches
+# data/sessions/<sid>/worker.lock every second. A fresh lock means the
+# parked worker will serve this request itself — skip the claim so we don't
+# wake a second worker for the same turn.
+worker_waiting() {
+  local id="$1" df sid lock mtime now
+  df="$BASE/dispatch/$id.json"
+  [ -f "$df" ] || return 1
+  sid="$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+print(d.get("session_id") or "")' "$df" 2>/dev/null)" || return 1
+  [ -n "$sid" ] || return 1
+  lock="$BASE/sessions/$sid/worker.lock"
+  [ -f "$lock" ] || return 1
+  mtime="$(stat -c %Y "$lock" 2>/dev/null)" || return 1
+  now="$(date +%s)"
+  [ $(( now - mtime )) -lt 15 ]
+}
+
 claim_oldest() {
   for f in "$Q"/req_*.json; do
     id="$(basename "$f" .json)"
@@ -39,6 +60,7 @@ claim_oldest() {
     [ -e "$R/$id.json" ] && continue
     age=$(( $(date +%s) - mtime ))
     [ "$age" -gt 600 ] && continue
+    worker_waiting "$id" && continue
     if [ "$DRY" = "1" ]; then
       wake "pending OpenCode request (dry-run: not claiming)" "{\"id\":\"$id\"}"
       exit 0

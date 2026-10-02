@@ -9,3 +9,6 @@ __pycache__/
 *.pyc
 # generated from the template by install.sh
 /systemd/jarvis-serve.service
+# local-only: Gemini's suggestion inbox, never committed
+/GEMINI.md
+/GAMEPLAN.md

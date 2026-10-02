@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# bin/jarvis — operator CLI for a live jarvis-serve deployment.
+#   jarvis status   deep /healthz (uptime, queue, sessions, latency, tunnel)
+#   jarvis tail     follow the server log
+#   jarvis clean    delete pipeline files older than 60 min (never sessions)
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+host_port() {
+  python3 - "$ROOT/config.json" <<'EOF'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+print(cfg.get("host", "127.0.0.1"), cfg.get("port", 8765))
+EOF
+}
+
+case "${1:-status}" in
+  status)
+    read -r host port <<<"$(host_port)"
+    curl -s -m 5 "http://$host:$port/healthz" | python3 -m json.tool
+    ;;
+  tail)
+    tail -f "$ROOT/logs/server.log"
+    ;;
+  clean)
+    for d in queue dispatch processing responses failed dead_letter; do
+      find "$ROOT/data/$d" -maxdepth 1 -name 'req_*.json' -mmin +60 \
+        -delete 2>/dev/null || true
+    done
+    echo "cleaned pipeline files older than 60min (sessions untouched)"
+    ;;
+  *)
+    echo "usage: jarvis {status|tail|clean}" >&2
+    exit 1
+    ;;
+esac

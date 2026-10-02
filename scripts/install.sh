@@ -117,6 +117,54 @@ if [ "$installed" = "0" ]; then
   echo "  Then verify: curl http://127.0.0.1:8765/healthz"
 fi
 
+# --- 4b. systemd: reverse tunnel -------------------------------------------
+# Supervises scripts/reverse-tunnel.py so network drops heal automatically.
+# Separate unit from jarvis-serve: the tunnel can fail independently.
+# NOTE: the tunnel MUST run under the ssh-tunnel venv python — system
+# python3 lacks paramiko. Prefer $ROOT/../ssh-tunnel/.venv/bin/python,
+# fall back to command -v python3 only if the venv is absent.
+TUNNEL_SRC="$ROOT/systemd/jarvis-tunnel.service.template"
+TUNNEL_TMP="$ROOT/systemd/jarvis-tunnel.service"
+TUNNEL_PY="$ROOT/../ssh-tunnel/.venv/bin/python"
+[ -x "$TUNNEL_PY" ] || TUNNEL_PY="$(command -v python3)"
+if [ -f "$TUNNEL_SRC" ]; then
+  sed -e "s|@ROOT@|$ROOT|g" -e "s|@USER@|$USER_NAME|g" \
+      -e "s|@PYTHON@|$TUNNEL_PY|g" "$TUNNEL_SRC" > "$TUNNEL_TMP"
+
+  tunnel_installed=0
+  if [ "$USER_NAME" = "root" ] && systemctl --version >/dev/null 2>&1; then
+    cp "$TUNNEL_TMP" /etc/systemd/system/jarvis-tunnel.service
+    systemctl daemon-reload
+    systemctl enable --now jarvis-tunnel.service >/dev/null 2>&1 || true
+    sleep 2
+    if systemctl is-active --quiet jarvis-tunnel.service; then
+      info "systemd tunnel service active (system)"
+      tunnel_installed=1
+    else
+      info "systemd tunnel unit installed but not active; see below"
+      systemctl status jarvis-tunnel.service --no-pager 2>&1 | head -20 || true
+    fi
+  elif systemctl --user --version >/dev/null 2>&1; then
+    mkdir -p "$HOME/.config/systemd/user"
+    cp "$TUNNEL_TMP" "$HOME/.config/systemd/user/jarvis-tunnel.service"
+    systemctl --user daemon-reload
+    systemctl --user enable --now jarvis-tunnel.service >/dev/null 2>&1 || true
+    sleep 2
+    if systemctl --user is-active --quiet jarvis-tunnel.service; then
+      info "systemd tunnel service active (user)"
+      tunnel_installed=1
+    else
+      info "tunnel user unit installed but not active (user manager may not linger)"
+    fi
+  fi
+
+  if [ "$tunnel_installed" = "0" ]; then
+    echo
+    echo "install: WARNING: could not verify an active tunnel service."
+    echo "  Manual fallback: nohup python3 $ROOT/scripts/reverse-tunnel.py --heartbeat-file $ROOT/data/tunnel.heartbeat >/dev/null 2>&1 &"
+  fi
+fi
+
 # --- 5. smoke test -----------------------------------------------------------
 sleep 1
 PORT="$(python3 -c 'import json; print(json.load(open("'"$CONFIG"'"))["port"])')"

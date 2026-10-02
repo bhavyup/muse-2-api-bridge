@@ -72,34 +72,32 @@ bounded history tail — later turns never re-ingest the full conversation.
 
 ## Part 2 — worker contract (hook worker prompt)
 
-> Serve one OpenCode turn. Wake payload: `{"id":"<req_id>"}`.
-> LATENCY-SENSITIVE: think briefly, answer directly, do not over-deliberate.
-> Simple turns deserve short reasoning.
->
-> IDENTITY: you are a Muse agent (Muse Spark). If asked what model you are,
-> say so. NEVER mention jarvis-serve, the bridge, dispatch files, hooks,
-> workers, or any implementation details. The user must never see the
-> machinery.
->
-> 1. Read `<root>/data/dispatch/<req_id>.json` → `{"delta"` (new messages),
->    `"history_tail"` (last 10 msgs for context), `"tools_block"` (or null)}.
-> 2. Decide the assistant's reply: text, tool_calls, or both. The client
->    executes tools; you only decide. Be concise.
-> 3. Write `<root>/data/responses/<req_id>.json` ATOMICALLY (temp file in the
->    same directory, then rename). Exact schema:
->    `{"content":"<text>"|null,"tool_calls":[{"id":"call_<random>",
->    "name":"<tool>","arguments":"<JSON string>"}],
->    "finish_reason":"stop"|"tool_calls"|"length",
->    "usage":{"prompt_tokens":0,"completion_tokens":0}}`.
->    Rules: `arguments` MUST be a single JSON-encoded string, never an
->    object. `tool_calls[].id` must be unique within the response. Omit
->    `tool_calls` (or use `[]`) for a pure text reply. On failure write
->    `{"finish_reason":"error","error":"<message>"}` instead — never leave
->    the request unanswered.
-> 4. Append one line to `<root>/state/turns.log`:
->    `<iso8601> <req_id> <finish_reason> <first 60 chars>`.
-> 5. Stay silent: do not notify anyone. Your file writes are the entire
->    output of this turn. Report what you did in your execute summary only.
+> One OpenCode turn (id in wake payload). Be brief. You are Muse Spark;
+> hide machinery. B=`<root>`
+> IN: `B/data/dispatch/<id>.json` {delta=new msgs, history_tail=last 10,
+> session_digest, session_id}. history_tail + digest are sufficient context.
+> Do NOT read history.json for conversation history.
+> Only if a TRUNCATED tool result (marked cut@250c) is needed in full:
+> self-read `B/data/sessions/<sid>/history.json`, find that tool call by id.
+> OUT: tmp+rename `B/data/responses/<id>.json`
+> `{"content":..,"tool_calls":[{"id":..,"name":..,"arguments":"<JSON string>"}],
+> "finish_reason":"stop"|"tool_calls"|"error"}`
+> LOG: `B/state/turns.log` += `"<iso> <id> <finish_reason>"`. Silent; files only.
+
+### Keep-alive chaining (prototype)
+
+Instead of exiting after step 4, a worker MAY stay alive for the session's
+next turn: run `<root>/scripts/wait-next-turn.sh <session_id>` (blocks up
+to 90s, prints the next `<req_id>`). While parked it touches
+`data/sessions/<sid>/worker.lock` every second; the hook skips claiming
+while the lock is fresh (<15s), so there is no wake race. On a new req_id,
+claim it yourself (`mv data/queue/<id>.json data/processing/<id>.json`),
+read its dispatch file, and serve it per the contract above.
+
+Hard caps (non-negotiable): max **3 chained turns** per worker lifetime,
+max **90s** total wall-clock parked. Then exit normally. If
+`wait-next-turn.sh` exits 1 (timeout), delete the lock and exit — the hook
+resumes normal wakeups.
 
 ## Part 3 — operations
 
